@@ -37,20 +37,23 @@
   (defn -main
     [& args]
     (let
-      [node (OtpNode. "iot@localhost")
-      _ (. node setCookie "secret")
-      mailbox (. node createMbox "mailbox")
-      chan-receive (chan)
-      mqtt-client (prepare-mqtt-client)
-      prepared-mqtt-handle-pub (partial mqtt-handle-pub mqtt-client)]
+      [
+        id (.toString (java.util.UUID/randomUUID))
+        node (OtpNode. (str "iot_" id "@localhost"))
+        _ (. node setCookie "secret")
+        mailbox (. node createMbox "mailbox")
 
-      (println "Connected!")
-      (go
+        chan-receive (chan)
+        mqtt-client (prepare-mqtt-client)
+        prepared-mqtt-handle-pub (partial mqtt-handle-pub mqtt-client)
+        ]
+        (println (str id " Connected!"))
+        (go
+          (loop
+            []
+            (prepared-mqtt-handle-pub (<! chan-receive))
+            (recur)))
         (loop
           []
-          (prepared-mqtt-handle-pub (<! chan-receive))
-          (recur)))
-      (loop
-        []
-        (>!! chan-receive (. mailbox receive))
-        (recur))))
+          (>!! chan-receive (. mailbox receive))
+          (recur))))

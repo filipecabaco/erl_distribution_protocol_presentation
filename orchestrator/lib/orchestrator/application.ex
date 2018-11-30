@@ -2,10 +2,6 @@ defmodule Orchestrator.Application do
   use Application
 
   def start(_type, _args) do
-
-    Node.start(:server@localhost, :shortnames)
-    Node.set_cookie(:secret)
-
     children = [
       Orchestrator.Iot
     ]

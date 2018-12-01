@@ -19,6 +19,6 @@ defmodule Orchestrator.MixProject do
   end
 
   defp deps do
-    [{ :elixir_uuid, "~> 1.2" }]
+    []
   end
 end

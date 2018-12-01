@@ -1,0 +1,2 @@
+git+git://github.com/Pyrlang/Pyrlang@master#egg=pyrlang
+git+git://github.com/Pyrlang/Term@master#egg=term

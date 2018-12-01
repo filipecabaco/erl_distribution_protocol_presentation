@@ -26,28 +26,27 @@ class: middle
 # Agenda
 
 1. Who am I?
-2. Motivation
+2. Why Interoperability?
 3. Erlang to the rescue
-4. Erlang Distribution Protocol
-5. Example
-6. Caveats
+4. Example
+5. Warnings
 
 ---
 class: middle
-# Who am I?
+# 1. Who am I?
 
 * Filipe Cabaço
 * Volkswagen Digital Lab: Lisbon
 * @filipecabaco in <img src="twitter.png" style="width:20px;"/> & <img src="github.png" style="width:20px;"/>
 ---
 class: middle
-# Motivation
+# 2. Why Interoperability?
 
 * Libraries / Features from other languages
 * Easier to solve in other language
 ---
 class: middle
-# Erlang to the rescue
+# 3. Erlang to the rescue
 
 * NIFs - Can be dangerous
 * Ports - Lower level
@@ -71,9 +70,8 @@ class: middle
 * Everything becomes an Erlang node!
 * Everything uses messages!
 ---
-class: middle, center
-# Our example
-<img src="distribution_presentation_example.png"/>
+# 4. Example
+.middle[.center[![](distribution_presentation_example.svg)]]
 ---
 class: middle
 # How to achieve it in Elixir?
@@ -82,24 +80,41 @@ class: middle
 ##### Connect to EPMD
 ``` elixir
 use GenServer
-def init(_), do: {:ok, []}
+
+def init(_), do: {:ok, %{}}
 def start_link(_) do
-  "orchestrator_#{UUID.uuid4()}@localhost"
+  "orchestrator@localhost"
+  |> String.to_atom()
+*  |> Node.start(:shortnames)
+
+*  Node.set_cookie(:secret)
+
+  GenServer.start_link(__MODULE__, %{}, name: :orchestrator)
+end
+```
+---
+class: middle
+##### Register Process
+``` elixir
+use GenServer
+
+def init(_), do: {:ok, %{}}
+def start_link(_) do
+  "orchestrator@localhost"
   |> String.to_atom()
   |> Node.start(:shortnames)
 
   Node.set_cookie(:secret)
 
-  GenServer.start_link(__MODULE__, [], name: __MODULE__)
+*  GenServer.start_link(__MODULE__, %{}, name: :orchestrator)
 end
 ```
 ---
 class: middle
-##### Select connected node
+##### Select
 ``` elixir
-defp select_worker() do
-  {:ok, names} = :net_adm.names()
-  #
+defp select_node() do
+*  {:ok, names} = :net_adm.names()
   names
   |> Enum.map(&(elem(&1, 0)))
   |> Enum.map(&List.to_string/1)
@@ -109,7 +124,7 @@ end
 ```
 ---
 class:middle
-##### Connect to selected Node
+##### Connect
 ``` elixir
 defp connect_to_worker() do
   node = :"#{select_node()}@localhost"
@@ -120,12 +135,21 @@ end
 ```
 ---
 class:middle
-##### Send message to selected Node
+##### Send message
 ``` elixir
-def handle_call({:msg, message}, _sender, _state) do
+def handle_call({:msg, message}, _sender, state) do
   {:ok, node} = connect_to_worker()
-  send({:mailbox, node}, to_charlist(message))
-  {:reply, :ok, []}
+*  send({:mailbox, node}, to_charlist(message))
+  {:reply, :ok, state}
+end
+```
+---
+class:middle
+##### Receive message
+``` elixir
+def handle_info({client, msg}, state) do
+  state = Map.update(state, client, {1, [msg]}, &update_metrics(&1, msg))
+  {:noreply, state}
 end
 ```
 ---
@@ -133,42 +157,228 @@ class: middle
 # How to achieve it in the JVM?
 ---
 class: middle
-##### Connect to EPDM / Create Mailbox / Receive messages
+##### Connect to EPDM
 ``` clojure
-(let
-  [ id (.toString (java.util.UUID/randomUUID))
-    node (OtpNode. (str "iot_" id "@localhost"))
-    _ (. node setCookie "secret")
-    mailbox (. node createMbox "mailbox")]
-  (go (loop
-        []
+(defn -main
+  [& args]
+  (let
+   [id (.toString (java.util.UUID/randomUUID))
+*    node (OtpNode. (str "iot_" id "@localhost"))
+*    _ (. node setCookie "secret")
+    mailbox (. node createMbox "mailbox")
+    chan-receive (chan)
+    mqtt-client (prepare-mqtt-client mailbox)
+    prepared-mqtt-handle-pub (partial mqtt-handle-pub mqtt-client)]
+    (println (str id " Connected!"))
+    (go
+      (loop []
         (prepared-mqtt-handle-pub (<! chan-receive))
         (recur)))
+    (loop []
+      (>!! chan-receive (. mailbox receive))
+      (recur))))
+```
+---
+class: middle
+##### Register Process
+``` clojure
+(defn -main
+  [& args]
+  (let
+   [id (.toString (java.util.UUID/randomUUID))
+    node (OtpNode. (str "iot_" id "@localhost"))
+    _ (. node setCookie "secret")
+*    mailbox (. node createMbox "mailbox")
+    chan-receive (chan)
+    mqtt-client (prepare-mqtt-client mailbox)
+    prepared-mqtt-handle-pub (partial mqtt-handle-pub mqtt-client)]
+    (println (str id " Connected!"))
+    (go
+      (loop []
+        (prepared-mqtt-handle-pub (<! chan-receive))
+        (recur)))
+    (loop []
+      (>!! chan-receive (. mailbox receive))
+      (recur))))
+```
+---
+class: middle
+##### Receive messages
+``` clojure
+(defn -main
+  [& args]
+  (let
+   [id (.toString (java.util.UUID/randomUUID))
+    node (OtpNode. (str "iot_" id "@localhost"))
+    _ (. node setCookie "secret")
+    mailbox (. node createMbox "mailbox")
+    chan-receive (chan)
+    mqtt-client (prepare-mqtt-client mailbox)
+    prepared-mqtt-handle-pub (partial mqtt-handle-pub mqtt-client)]
+    (println (str id " Connected!"))
+    (go
+      (loop []
+        (prepared-mqtt-handle-pub (<! chan-receive))
+        (recur)))
+*    (loop []
+*      (>!! chan-receive (. mailbox receive))
+*      (recur))))
+```
+---
+class: middle
+##### Receive messages
+``` clojure
+(defn -main
+  [& args]
+  (let
+   [id (.toString (java.util.UUID/randomUUID))
+    node (OtpNode. (str "iot_" id "@localhost"))
+    _ (. node setCookie "secret")
+    mailbox (. node createMbox "mailbox")
+    chan-receive (chan)
+    mqtt-client (prepare-mqtt-client mailbox)
+    prepared-mqtt-handle-pub (partial mqtt-handle-pub mqtt-client)]
+    (println (str id " Connected!"))
+*    (go
+*      (loop []
+*        (prepared-mqtt-handle-pub (<! chan-receive))
+*        (recur)))
+    (loop []
+      (>!! chan-receive (. mailbox receive))
+      (recur))))
 ```
 ---
 class: middle
 ##### Translate message
 ``` clojure
 (defn mqtt-handle-pub
-    [mqtt-client message]
-    (let
-      [ value (. message stringValue)
-        to-publish (. value getBytes)]
-      (. mqtt-client publish topic to-publish 0 false)
-      (println (str "Published " value))))
+  [mqtt-client
+   message]
+  (let
+*   [value (. message stringValue)
+    to-publish (. value getBytes)]
+    (. mqtt-client publish topic to-publish 0 false)
+    (println (str "Published " value))))
 ```
 ---
 class: middle
-# Possible issues
-* Single point of failure (EPDM)
-* No secure connection (TLS option exists)
-* No automatic reconnection
-* JVM well supported, other languages not so much
+##### Convert content
+``` clojure
+(defn listener
+  [mailbox]
+  (reify IMqttMessageListener
+    (messageArrived [_ _ msg]
+      (try
+        (let
+         [m (. msg toString)
+          pid (. mailbox self)
+          pid_id (. pid node)
+*          pid_to_send (OtpErlangString. pid_id)
+*          message_to_send (OtpErlangString. m)
+*          tuple_array (into-array OtpErlangObject [pid_to_send message_to_send])
+*          tuple_to_send (OtpErlangTuple. tuple_array)]
+          (println (str "Sending to registry " m))
+          (. mailbox send "mailbox" "registry@localhost" tuple_to_send))
+        (catch Exception error
+          (println (. error getMessage ())))))))
+```
+---
+##### Send message
+``` clojure
+(defn listener
+  [mailbox]
+  (reify IMqttMessageListener
+    (messageArrived [_ _ msg]
+      (try
+        (let
+         [m (. msg toString)
+          pid (. mailbox self)
+          pid_id (. pid node)
+          pid_to_send (OtpErlangString. pid_id)
+          message_to_send (OtpErlangString. m)
+          tuple_array (into-array OtpErlangObject [pid_to_send message_to_send])
+          tuple_to_send (OtpErlangTuple. tuple_array)]
+          (println (str "Sending to registry " m))
+*          (. mailbox send "mailbox" "registry@localhost" tuple_to_send))
+        (catch Exception error
+          (println (. error getMessage ())))))))
+```
 ---
 class: middle
-## Thank you!
+# How to achieve it in the Python?
+---
+class: middle
+##### Connect to EPDM
+``` python
+def main():
+  e = GeventEngine()
+*  node = Node(node_name="registry@localhost", cookie="secret", engine=e)
+  logging.debug(node)
+  Register(node)
+  e.run_forever()
+```
+---
+class: middle
+##### Register Process
+``` python
+class Register(Process):
+  def __init__(self, node) -> None:
+    Process.__init__(self, node_name=node.node_name_)
+*    node.register_name(self, Atom('mailbox'))
 
+  def handle_one_inbox_message(self, msg):
+    send_message(self.get_node(), self.pid_, msg)
 
+  def exit(self, reason=None):
+    logging.error(reason)
+    Process.exit(self, reason)
+```
+---
+class: middle
+##### Receive messages
+``` python
+class Register(Process):
+  def __init__(self, node) -> None:
+    Process.__init__(self, node_name=node.node_name_)
+    node.register_name(self, Atom('mailbox'))
+
+*  def handle_one_inbox_message(self, msg):
+*    send_message(self.get_node(), self.pid_, msg)
+
+  def exit(self, reason=None):
+    logging.error(reason)
+    Process.exit(self, reason)
+```
+---
+class: middle
+##### Send messages
+``` python
+def remote_receiver_name():
+  return Atom('orchestrator@localhost'), Atom("orchestrator")
+
+def send_message(node, pid, msg):
+  logging.info("Sending back to orchestrator")
+*  node.send(sender=pid, receiver=remote_receiver_name(), message=msg)
+```
+---
+class: middle
+# 5. Warnings
+* Single point of failure (EPDM)
+* No secure connection (TLS option exists)
+* No automatic reconnection (Can be implemented)
+* Discovery Service will be useful
+* JVM well supported, other languages not so much
+* Differences between implementations
+---
+class: middle
+# But...
+* Different language, same concepts exist
+* Increased community |> Increased Interest |> Increased Support
+* Just another tool to take into consideration
+---
+class: middle
+# Thank you!
+### [github.com/filipecabaco/erl_distribution_protocol_presentation](https://github.com/filipecabaco/erl_distribution_protocol_presentation)
     </textarea>
     <script src="https://remarkjs.com/downloads/remark-latest.min.js">
     </script>

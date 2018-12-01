@@ -2,7 +2,6 @@ from pyrlang import Node, Process, GeventEngine
 from pyrlang.net_kernel import NetKernel
 from term import Atom
 from gevent import monkey
-from gevent.lock import BoundedSemaphore
 import subprocess
 import logging
 
@@ -20,7 +19,6 @@ def send_message(node, pid, msg):
 
 class Register(Process):
     def __init__(self, node) -> None:
-      self.semaphore = BoundedSemaphore()
       Process.__init__(self, node_name=node.node_name_)
       node.register_name(self, Atom('mailbox'))
 

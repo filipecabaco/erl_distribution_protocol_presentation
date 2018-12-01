@@ -7,6 +7,7 @@
                  [org.erlang.otp/jinterface "1.6.1"]
                  [org.clojure/core.async "0.4.490"]
                  [org.eclipse.paho/org.eclipse.paho.client.mqttv3 "1.2.0"]]
+  :plugins [[lein-cljfmt "0.6.2"]]
   :main ^:skip-aot iot.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

@@ -18,7 +18,8 @@
           pid_id (. pid node)
           pid_to_send (OtpErlangString. pid_id)
           message_to_send (OtpErlangString. m)
-          tuple_array (into-array OtpErlangObject [pid_to_send message_to_send])
+          type_to_send (OtpErlangAtom. "received")
+          tuple_array (into-array OtpErlangObject [type_to_send pid_to_send message_to_send])
           tuple_to_send (OtpErlangTuple. tuple_array)]
           (println (str "Sending to registry " m))
           (. mailbox send "mailbox" "registry@localhost" tuple_to_send))

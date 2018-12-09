@@ -79,35 +79,19 @@ class: middle
 class: middle
 ##### Connect to EPMD
 ``` elixir
-use GenServer
-
-def init(_), do: {:ok, %{}}
-def start_link(_) do
-  "orchestrator@localhost"
-  |> String.to_atom()
-*  |> Node.start(:shortnames)
-
-*  Node.set_cookie(:secret)
-
-  GenServer.start_link(__MODULE__, %{}, name: :orchestrator)
-end
+*Node.start(:orchestrator@localhost,:shortnames)
+*Node.set_cookie(:secret)
+# Add to give atom as name due to issues with other language
+GenServer.start_link(__MODULE__, %{}, name: :orchestrator)
 ```
 ---
 class: middle
 ##### Register Process
 ``` elixir
-use GenServer
-
-def init(_), do: {:ok, %{}}
-def start_link(_) do
-  "orchestrator@localhost"
-  |> String.to_atom()
-  |> Node.start(:shortnames)
-
-  Node.set_cookie(:secret)
-
-*  GenServer.start_link(__MODULE__, %{}, name: :orchestrator)
-end
+Node.start(:orchestrator@localhost,:shortnames)
+Node.set_cookie(:secret)
+*# Add to give atom as name due to issues with other language
+*GenServer.start_link(__MODULE__, %{}, name: :orchestrator)
 ```
 ---
 class: middle
@@ -137,18 +121,18 @@ end
 class:middle
 ##### Send message
 ``` elixir
-def handle_call({:msg, message}, _sender, state) do
+def handle_info({:msg, message}, state) do
   {:ok, node} = connect_to_worker()
-*  send({:mailbox, node}, to_charlist(message))
-  {:reply, :ok, state}
+* send({:mailbox, node}, to_charlist(message))
+  {:noreply, state}
 end
 ```
 ---
 class:middle
 ##### Receive message
 ``` elixir
-def handle_info({client, msg}, state) do
-  state = Map.update(state, client, {1, [msg]}, &update_metrics(&1, msg))
+def handle_info({:stats, content}, state) do
+  IO.inspect Enum.group_by(content, fn {k, _} -> k end, fn {_, v} -> [v] end)
   {:noreply, state}
 end
 ```
@@ -273,10 +257,11 @@ class: middle
          [m (. msg toString)
           pid (. mailbox self)
           pid_id (. pid node)
-*          pid_to_send (OtpErlangString. pid_id)
-*          message_to_send (OtpErlangString. m)
-*          tuple_array (into-array OtpErlangObject [pid_to_send message_to_send])
-*          tuple_to_send (OtpErlangTuple. tuple_array)]
+*         pid_to_send (OtpErlangString. pid_id)
+*         message_to_send (OtpErlangString. m)
+*         type_to_send (OtpErlangAtom. "received")
+*         tuple_array (into-array OtpErlangObject [type_to_send pid_to_send message_to_send])
+*         tuple_to_send (OtpErlangTuple. tuple_array)]
           (println (str "Sending to registry " m))
           (. mailbox send "mailbox" "registry@localhost" tuple_to_send))
         (catch Exception error
@@ -296,7 +281,8 @@ class: middle
           pid_id (. pid node)
           pid_to_send (OtpErlangString. pid_id)
           message_to_send (OtpErlangString. m)
-          tuple_array (into-array OtpErlangObject [pid_to_send message_to_send])
+          type_to_send (OtpErlangAtom. "received")
+          tuple_array (into-array OtpErlangObject [type_to_send pid_to_send message_to_send])
           tuple_to_send (OtpErlangTuple. tuple_array)]
           (println (str "Sending to registry " m))
 *          (. mailbox send "mailbox" "registry@localhost" tuple_to_send))
@@ -312,8 +298,7 @@ class: middle
 ``` python
 def main():
   e = GeventEngine()
-*  node = Node(node_name="registry@localhost", cookie="secret", engine=e)
-  logging.debug(node)
+* node = Node(node_name="registry@localhost", cookie="secret", engine=e)
   Register(node)
   e.run_forever()
 ```
@@ -322,43 +307,63 @@ class: middle
 ##### Register Process
 ``` python
 class Register(Process):
-  def __init__(self, node) -> None:
-    Process.__init__(self, node_name=node.node_name_)
-*    node.register_name(self, Atom('mailbox'))
+    def __init__(self, node) -> None:
+*     Process.__init__(self, node_name=node.node_name_)
+*     node.register_name(self, Atom('mailbox'))
 
-  def handle_one_inbox_message(self, msg):
-    send_message(self.get_node(), self.pid_, msg)
+    def handle_one_inbox_message(self, msg):
+    ...
 
-  def exit(self, reason=None):
-    logging.error(reason)
-    Process.exit(self, reason)
+    def exit(self, reason=None):
+      logging.error(reason)
+      Process.exit(self, reason)
 ```
 ---
 class: middle
 ##### Receive messages
 ``` python
 class Register(Process):
-  def __init__(self, node) -> None:
-    Process.__init__(self, node_name=node.node_name_)
-    node.register_name(self, Atom('mailbox'))
+    def __init__(self, node) -> None:
+      Process.__init__(self, node_name=node.node_name_)
+      node.register_name(self, Atom('mailbox'))
 
-*  def handle_one_inbox_message(self, msg):
-*    send_message(self.get_node(), self.pid_, msg)
+*    def handle_one_inbox_message(self, msg):
+*      if(msg[0] == Atom("stats")):
+        rows = c.execute(f'SELECT * FROM registry').fetchall()
+        self.get_node().send(sender=self.pid_,
+              receiver=remote_receiver_name(),
+              message=(Atom("stats"), rows))
+*      if(msg[0] == Atom("received")):
+        c.execute(f'INSERT INTO registry(device, message) VALUES ("{msg[1]}","{msg[2]}")')
 
-  def exit(self, reason=None):
-    logging.error(reason)
-    Process.exit(self, reason)
+    def exit(self, reason=None):
+      logging.error(reason)
+      Process.exit(self, reason)
 ```
 ---
 class: middle
 ##### Send messages
 ``` python
-def remote_receiver_name():
-  return Atom('orchestrator@localhost'), Atom("orchestrator")
+*def remote_receiver_name():
+*  return Atom('orchestrator@localhost'), Atom("orchestrator")
 
-def send_message(node, pid, msg):
-  logging.info("Sending back to orchestrator")
-*  node.send(sender=pid, receiver=remote_receiver_name(), message=msg)
+class Register(Process):
+    def __init__(self, node) -> None:
+      Process.__init__(self, node_name=node.node_name_)
+      node.register_name(self, Atom('mailbox'))
+
+    def handle_one_inbox_message(self, msg):
+      if(msg[0] == Atom("stats")):
+        rows = c.execute(f'SELECT * FROM registry').fetchall()
+*        self.get_node().send(sender=self.pid_,
+*              receiver=remote_receiver_name(),
+*              message=(Atom("stats"), rows))
+      if(msg[0] == Atom("received")):
+        c.execute(f'INSERT INTO registry(device, message) VALUES ("{msg[1]}","{msg[2]}")')
+
+    def exit(self, reason=None):
+      logging.error(reason)
+      Process.exit(self, reason)
 ```
 ---
 class: middle
@@ -372,7 +377,7 @@ class: middle
 ---
 class: middle
 # But...
-* Different language, same concepts exist
+* Different language, same concepts
 * Increased community |> Increased Interest |> Increased Support
 * Just another tool to take into consideration
 ---

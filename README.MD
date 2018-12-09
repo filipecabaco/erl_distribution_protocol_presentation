@@ -20,5 +20,5 @@ Did you ever felt that interoperability was difficult? Did you ever miss a libra
   * `python3 registry.py`
 
 ## How to interact?
-* On iex: `Process.whereis(:orchestrator) |> GenServer.call({:msg, "message"})`
-* On iex: `Process.whereis(:orchestrator) |> GenServer.call(:metrics)`
+* On iex: `GenServer.call(Process.whereis(:orchestrator), :stats)`
+* On iex: `GenServer.call(Process.whereis(:orchestrator), {:timer, 5000})`

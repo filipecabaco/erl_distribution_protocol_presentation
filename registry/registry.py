@@ -15,21 +15,19 @@ c.execute('CREATE TABLE IF NOT EXISTS registry (device text, message text)')
 def remote_receiver_name():
   return Atom('orchestrator@localhost'), Atom("orchestrator")
 
-def send_message(node, pid, msg):
-  logging.info("Sending back to orchestrator")
-  logging.info(msg[0])
-  c.execute(f'INSERT INTO registry(device, message) VALUES ("{msg[0]}","{msg[1]}")')
-  node.send(sender=pid,
-              receiver=remote_receiver_name(),
-              message=msg)
-
 class Register(Process):
     def __init__(self, node) -> None:
       Process.__init__(self, node_name=node.node_name_)
       node.register_name(self, Atom('mailbox'))
 
     def handle_one_inbox_message(self, msg):
-      send_message(self.get_node(), self.pid_, msg)
+      if(msg[0] == Atom("stats")):
+        rows = c.execute(f'SELECT * FROM registry').fetchall()
+        self.get_node().send(sender=self.pid_,
+              receiver=remote_receiver_name(),
+              message=(Atom("stats"), rows))
+      if(msg[0] == Atom("received")):
+        c.execute(f'INSERT INTO registry(device, message) VALUES ("{msg[1]}","{msg[2]}")')
 
     def exit(self, reason=None):
       logging.error(reason)
@@ -37,10 +35,8 @@ class Register(Process):
 
 def main():
   e = GeventEngine()
-
   node = Node(node_name="registry@localhost", cookie="secret", engine=e)
   Register(node)
-
   e.run_forever()
 
 if __name__ == "__main__":
